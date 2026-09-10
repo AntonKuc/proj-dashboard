@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/v1/sync/taxcom",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

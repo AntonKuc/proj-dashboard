@@ -3,6 +3,10 @@
     {
       "path": "/api/v1/sync/taxcom",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/v1/sync/yandex-maps",
+      "schedule": "30 3 * * *"
     }
   ]
 }

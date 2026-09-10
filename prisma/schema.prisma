@@ -27,13 +27,15 @@ model User {
 // spreadsheet tab (UG, VS, AP, Tomi, HO, TP, KB, BT) plus a special
 // "TOTAL" code for the consolidated ("ИТОГ") view.
 model Project {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
-  isTotal   Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  metrics   Metric[]
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  isTotal        Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  metrics        Metric[]
+  yandexMapsInfo YandexMapsInfo?
+  yandexReviews  YandexReview[]
 }
 
 enum MetricSource {
@@ -61,4 +63,50 @@ model Metric {
 
   @@unique([projectId, line, month, source])
   @@index([projectId, month])
+}
+
+// Current snapshot of a project's Яндекс Карты card - rating, address,
+// coordinates. Informational (shown on the project page), not a P&L
+// line, so it does NOT go through the Metric table.
+//
+// orgId is Yandex's own numeric organization id (from the org page URL,
+// e.g. /maps/org/<slug>/<orgId>/) - the stable key for this entity.
+// orgSlug is the current URL slug (cosmetic, Yandex can change it) -
+// keep it only to build links, never join on it.
+model YandexMapsInfo {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  orgId       String
+  orgSlug     String
+  ratingValue Float?
+  ratingCount Int?
+  reviewCount Int?
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  updatedAt   DateTime @updatedAt
+}
+
+// One review from a project's Яндекс Карты page.
+//
+// Yandex doesn't expose a review id in the page markup, so the stable
+// dedup key is (orgId, authorUserId, publishedAt): authorUserId comes
+// from the reviewer's profile link (stable per Yandex account),
+// publishedAt has millisecond precision - the same person posting twice
+// at the exact same millisecond isn't a real-world case worth handling.
+model YandexReview {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  orgId        String
+  authorUserId String
+  authorName   String
+  text         String
+  publishedAt  DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([orgId, authorUserId, publishedAt])
+  @@index([projectId, publishedAt])
 }

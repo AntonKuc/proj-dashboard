@@ -4,13 +4,20 @@ import { formatRub, formatMonth } from "@/lib/format";
 import { distinctMonths } from "@/lib/metrics";
 import RevenueTrendChart, { type TrendPoint } from "@/components/RevenueTrendChart";
 import RenameProjectForm from "@/components/RenameProjectForm";
+import YandexMapsCard from "@/components/YandexMapsCard";
 
 export const dynamic = "force-dynamic";
+
+const RECENT_REVIEWS_ON_PAGE = 5;
 
 export default async function ProjectPage({ params }: { params: { code: string } }) {
   const project = await prisma.project.findUnique({
     where: { code: params.code },
-    include: { metrics: true },
+    include: {
+      metrics: true,
+      yandexMapsInfo: true,
+      yandexReviews: { orderBy: { publishedAt: "desc" }, take: RECENT_REVIEWS_ON_PAGE },
+    },
   });
   if (!project) notFound();
 
@@ -29,6 +36,10 @@ export default async function ProjectPage({ params }: { params: { code: string }
   return (
     <div className="space-y-6">
       <RenameProjectForm code={project.code} name={project.name} />
+
+      {project.yandexMapsInfo && (
+        <YandexMapsCard info={project.yandexMapsInfo} recentReviews={project.yandexReviews} />
+      )}
 
       <div className="card">
         <h2 className="mb-3 font-medium">Выручка и валовая прибыль по месяцам</h2>

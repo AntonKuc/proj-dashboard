@@ -1,0 +1,64 @@
+// Prisma schema for the projects consolidation dashboard.
+// See README.md for setup instructions (Neon Postgres + Vercel).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         Role     @default(VIEWER)
+  createdAt    DateTime @default(now())
+}
+
+// One row per business (restaurant/point). Code matches the source
+// spreadsheet tab (UG, VS, AP, Tomi, HO, TP, KB, BT) plus a special
+// "TOTAL" code for the consolidated ("ИТОГ") view.
+model Project {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isTotal   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  metrics   Metric[]
+}
+
+enum MetricSource {
+  MANUAL // imported from the xlsx report / entered by an admin
+  TAXCOM // Такском касса
+  ONEC // 1С
+  GDRIVE // Google Диск
+  YANDEX_MAPS // Яндекс Карты
+}
+
+// One value of one P&L line item, for one project, for one month.
+// Line items differ between projects (each has its own set of expense
+// categories), so this is stored as a flexible fact table rather than
+// fixed columns.
+model Metric {
+  id        String       @id @default(cuid())
+  projectId String
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  line      String // e.g. "Выручка", "ФОТ", "Аренда помещения 17,7м2"
+  month     String // "YYYY-MM"
+  value     Float
+  source    MetricSource @default(MANUAL)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([projectId, line, month, source])
+  @@index([projectId, month])
+}

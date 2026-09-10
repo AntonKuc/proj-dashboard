@@ -1,0 +1,12 @@
+# Files Claude should not read/index when working in this repo.
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.log
+package-lock.json
+data/raw_extract.json
+.env
+.env.local
+.env*.local

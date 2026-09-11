@@ -103,6 +103,7 @@ model YandexReview {
   authorUserId String
   authorName   String
   text         String
+  rating       Int?
   publishedAt  DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

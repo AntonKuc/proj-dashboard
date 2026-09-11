@@ -10,8 +10,6 @@ import YandexReviewsArchive from "@/components/YandexReviewsArchive";
 
 export const dynamic = "force-dynamic";
 
-const RECENT_REVIEWS_ON_PAGE = 5;
-
 export default async function ProjectPage({ params }: { params: { code: string } }) {
   const project = await prisma.project.findUnique({
     where: { code: decodeURIComponent(params.code) },
@@ -44,10 +42,7 @@ export default async function ProjectPage({ params }: { params: { code: string }
 
       {project.yandexMapsInfo && (
         <>
-          <YandexMapsCard
-            info={project.yandexMapsInfo}
-            recentReviews={project.yandexReviews.slice(0, RECENT_REVIEWS_ON_PAGE)}
-          />
+          <YandexMapsCard info={project.yandexMapsInfo} />
           <YandexReviewsArchive reviews={project.yandexReviews} />
         </>
       )}

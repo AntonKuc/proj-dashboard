@@ -11,7 +11,7 @@ import {
   Legend,
 } from "recharts";
 
-export type TrendPoint = { month: string; Выручка: number; "Валовая прибыль": number };
+export type TrendPoint = { month: string; Выручка: number; Себестоимость: number };
 
 const numberFormatter = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 
@@ -31,7 +31,7 @@ export default function RevenueTrendChart({ data }: { data: TrendPoint[] }) {
         <Line type="monotone" dataKey="Выручка" stroke="#3b6fe0" strokeWidth={2} dot={false} />
         <Line
           type="monotone"
-          dataKey="Валовая прибыль"
+          dataKey="Себестоимость"
           stroke="#22a06b"
           strokeWidth={2}
           dot={false}

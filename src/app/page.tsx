@@ -32,7 +32,10 @@ export default async function OverviewPage() {
   const ytdNetProfit = totalMetrics
     .filter((m) => m.line === "Чистая прибыль")
     .reduce((acc, m) => acc + m.value, 0);
-  const latestRentability = latest ? valueFor(totalMetrics, "Рентабельность", latest) : 0;
+  // Рентабельность считаем с начала года (как и выручку/чистую прибыль выше),
+  // а не берём готовое число за последний месяц - иначе показатель скачет
+  // на удачных месяцах и не сопоставим с соседними карточками.
+  const ytdRentability = ytdRevenue !== 0 ? ytdNetProfit / ytdRevenue : null;
 
   const comparisonRows = operatingProjects.map((p) => {
     const revenue = latest ? valueFor(p.metrics, "Выручка", latest) : 0;
@@ -71,8 +74,8 @@ export default async function OverviewPage() {
           <div className="stat-value">{formatRub(ytdNetProfit)}</div>
         </div>
         <div className="card">
-          <div className="stat-label">Рентабельность, {latest ? formatMonth(latest) : "—"}</div>
-          <div className="stat-value">{formatPercent(latestRentability)}</div>
+          <div className="stat-label">Рентабельность, с начала года</div>
+          <div className="stat-value">{formatPercent(ytdRentability)}</div>
         </div>
       </div>
 

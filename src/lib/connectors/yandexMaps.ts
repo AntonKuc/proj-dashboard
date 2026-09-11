@@ -74,6 +74,7 @@ export type YandexReviewRecord = {
   authorUserId: string;
   authorName: string;
   text: string;
+  rating: number | null;
   publishedAt: Date;
 };
 
@@ -201,6 +202,14 @@ export function parseYandexReviews(html: string, orgId: string): YandexReviewRec
       text = stripTags(extractBalancedSpan(block, spanTagStart));
     }
 
+    // Оценка (1-5 звёзд) лежит в отдельном itemProp="reviewRating" рядом с
+    // остальным блоком отзыва - у Яндекса это "X.0" в разметке, округляем
+    // на всякий случай. Отсутствие оценки не считаем сломанным блоком (в
+    // отличие от текста/автора/даты) - сохраняем отзыв с rating: null.
+    const ratingStr = extractMetaContent(block, "ratingValue");
+    const ratingNum = ratingStr !== null ? Math.round(Number(ratingStr)) : null;
+    const rating = ratingNum !== null && Number.isFinite(ratingNum) ? ratingNum : null;
+
     // Не у всех отзывов есть кликабельный профиль (аккаунт удалён/скрыт) -
     // тогда пробуем URL аватарки, а если и его нет (просто буква-плейсхолдер
     // без фото) - имя автора + точное время публикации (мс) практически
@@ -218,7 +227,7 @@ export function parseYandexReviews(html: string, orgId: string): YandexReviewRec
     const publishedAt = new Date(dateStr);
     if (Number.isNaN(publishedAt.getTime())) continue;
 
-    out.push({ orgId, authorUserId, authorName, text, publishedAt });
+    out.push({ orgId, authorUserId, authorName, text, rating, publishedAt });
   }
   return out;
 }

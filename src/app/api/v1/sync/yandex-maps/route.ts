@@ -55,13 +55,14 @@ async function syncAll(projectCodes?: string[]) {
             publishedAt: review.publishedAt,
           },
         },
-        update: { authorName: review.authorName, text: review.text },
+        update: { authorName: review.authorName, text: review.text, rating: review.rating },
         create: {
           projectId: project.id,
           orgId: review.orgId,
           authorUserId: review.authorUserId,
           authorName: review.authorName,
           text: review.text,
+          rating: review.rating,
           publishedAt: review.publishedAt,
         },
       });

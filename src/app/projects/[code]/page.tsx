@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 const RECENT_REVIEWS_ON_PAGE = 5;
 
 export default async function ProjectPage({ params }: { params: { code: string } }) {
+  console.log("[diag-code]", JSON.stringify(params.code), params.code.length, Buffer.from(params.code, "utf8").toString("hex"));
   const project = await prisma.project.findUnique({
     where: { code: params.code },
     include: {

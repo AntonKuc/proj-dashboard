@@ -5,6 +5,7 @@ import { distinctMonths } from "@/lib/metrics";
 import RevenueTrendChart, { type TrendPoint } from "@/components/RevenueTrendChart";
 import RenameProjectForm from "@/components/RenameProjectForm";
 import YandexMapsCard from "@/components/YandexMapsCard";
+import YandexReviewsArchive from "@/components/YandexReviewsArchive";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function ProjectPage({ params }: { params: { code: string }
     include: {
       metrics: true,
       yandexMapsInfo: true,
-      yandexReviews: { orderBy: { publishedAt: "desc" }, take: RECENT_REVIEWS_ON_PAGE },
+      yandexReviews: { orderBy: { publishedAt: "desc" } },
     },
   });
   if (!project) notFound();
@@ -38,7 +39,13 @@ export default async function ProjectPage({ params }: { params: { code: string }
       <RenameProjectForm code={project.code} name={project.name} />
 
       {project.yandexMapsInfo && (
-        <YandexMapsCard info={project.yandexMapsInfo} recentReviews={project.yandexReviews} />
+        <>
+          <YandexMapsCard
+            info={project.yandexMapsInfo}
+            recentReviews={project.yandexReviews.slice(0, RECENT_REVIEWS_ON_PAGE)}
+          />
+          <YandexReviewsArchive reviews={project.yandexReviews} />
+        </>
       )}
 
       <div className="card">

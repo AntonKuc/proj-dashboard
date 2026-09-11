@@ -23,7 +23,7 @@ export default async function OverviewPage() {
   const trendData: TrendPoint[] = months.map((month) => ({
     month: formatMonth(month),
     Выручка: valueFor(totalMetrics, "Выручка", month),
-    "Валовая прибыль": valueFor(totalMetrics, "Валовая прибыль", month),
+    Себестоимость: valueFor(totalMetrics, "Себестоимость", month),
   }));
 
   const ytdRevenue = totalMetrics
@@ -77,7 +77,7 @@ export default async function OverviewPage() {
       </div>
 
       <div className="card">
-        <h2 className="mb-3 font-medium">Выручка и валовая прибыль по месяцам (ИТОГ)</h2>
+        <h2 className="mb-3 font-medium">Выручка и себестоимость по месяцам (ИТОГ)</h2>
         {trendData.length > 0 ? (
           <RevenueTrendChart data={trendData} />
         ) : (

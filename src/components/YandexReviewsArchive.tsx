@@ -4,8 +4,9 @@ import { useState } from "react";
 import type { YandexReview } from "@prisma/client";
 import { formatMonth } from "@/lib/format";
 
-// Полный архив отзывов Яндекс Карт с фильтром - в отличие от YandexMapsCard
-// (последние 5, без интерактива), здесь можно переключаться между
+// Полный архив отзывов Яндекс Карт с фильтром - открывается всплывающим
+// окном по клику (карточка на странице проекта иначе дублирует то же самое
+// с YandexMapsCard). Внутри можно переключаться между
 // новизной/положительными/отрицательными. Выдаём не больше MAX_SHOWN сразу,
 // а не весь архив (у некоторых точек по 100+ отзывов) - страницы не листаем,
 // просто топ-N по выбранному фильтру.
@@ -22,6 +23,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 
 export default function YandexReviewsArchive({ reviews }: { reviews: YandexReview[] }) {
+  const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>("recent");
 
   const sorted = [...reviews].sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
@@ -34,45 +36,73 @@ export default function YandexReviewsArchive({ reviews }: { reviews: YandexRevie
   const shown = filtered.slice(0, MAX_SHOWN);
 
   return (
-    <div className="card">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-medium">Все отзывы ({reviews.length})</h2>
-        <div className="flex gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={
-                "rounded px-2 py-1 text-xs " +
-                (filter === f.key ? "bg-gray-900 text-white" : "stat-label hover:bg-gray-100")
-              }
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="card w-full text-left font-medium hover:bg-gray-50"
+      >
+        Все отзывы ({reviews.length})
+      </button>
 
-      {shown.length === 0 ? (
-        <p className="stat-label text-xs">Нет отзывов по этому фильтру.</p>
-      ) : (
-        <div className="space-y-3">
-          {shown.map((r) => (
-            <div key={r.id} className="border-t border-gray-100 pt-3 text-xs">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-medium">{r.authorName}</span>
-                <span className="stat-label">
-                  {r.rating !== null ? `★ ${r.rating} · ` : ""}
-                  {formatMonth(r.publishedAt.toISOString().slice(0, 7))}
-                </span>
-              </div>
-              <p className="mt-1 text-gray-700">{r.text}</p>
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-medium">Все отзывы ({reviews.length})</h2>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="stat-label hover:text-gray-900"
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
             </div>
-          ))}
+
+            <div className="mb-3 flex gap-2">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setFilter(f.key)}
+                  className={
+                    "rounded px-2 py-1 text-xs " +
+                    (filter === f.key ? "bg-gray-900 text-white" : "stat-label hover:bg-gray-100")
+                  }
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {shown.length === 0 ? (
+              <p className="stat-label text-xs">Нет отзывов по этому фильтру.</p>
+            ) : (
+              <div className="space-y-3">
+                {shown.map((r) => (
+                  <div key={r.id} className="border-t border-gray-100 pt-3 text-xs">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="font-medium">{r.authorName}</span>
+                      <span className="stat-label">
+                        {r.rating !== null ? `★ ${r.rating} · ` : ""}
+                        {formatMonth(r.publishedAt.toISOString().slice(0, 7))}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-gray-700">{r.text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
-

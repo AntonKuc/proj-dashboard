@@ -136,6 +136,34 @@ describe("parseYandexReviews", () => {
   it("returns an empty array when the page has no review blocks", () => {
     expect(parseYandexReviews("<div>нет отзывов</div>", "999")).toEqual([]);
   });
+
+  const reviewWithRating = `
+    <div itemType="http://schema.org/Review">
+      <div itemProp="author" itemType="http://schema.org/Person">
+        <span itemProp="name">Оценщик</span>
+      </div>
+      <span itemScope="" itemProp="reviewRating" itemType="http://schema.org/Rating">
+        <meta itemProp="bestRating" content="5"/>
+        <meta itemProp="worstRating" content="1"/>
+        <meta itemProp="ratingValue" content="4.0"/>
+      </span>
+      <meta itemProp="datePublished" content="2026-05-01T00:00:00.000Z">
+      <div itemProp="reviewBody">
+        <span class="spoiler-view__text-container">Хорошо, но есть нюансы.</span>
+      </div>
+    </div>
+  `;
+
+  it("extracts the per-review star rating from the nested reviewRating markup", () => {
+    const reviews = parseYandexReviews(reviewWithRating, "999");
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0].rating).toBe(4);
+  });
+
+  it("returns rating: null for a review with no reviewRating block (defensive, not expected in practice)", () => {
+    const reviews = parseYandexReviews(reviewWithProfileLink, "999");
+    expect(reviews[0].rating).toBeNull();
+  });
 });
 
 describe("YANDEX_MAPS_LOCATIONS", () => {

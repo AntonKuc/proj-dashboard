@@ -3,72 +3,93 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError } from "@/lib/api";
 import { requireAdmin } from "@/lib/apiAuth";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { fetchYandexMapsData, YANDEX_MAPS_LOCATIONS } from "@/lib/connectors/yandexMaps";
 
 // Каждая точка - горстка обычных HTTP-запросов (страница организации +
-// несколько страниц отзывов), без пошаговых вызовов вроде Такскома, так
-// что весь список из 10 точек укладывается в один вызов без чанкинга по
-// датам (у Яндекса и нет фильтра по дате отзывов - см. connectors/yandexMaps.ts).
+// несколько страниц отзывов) плюс запись в БД. Строго последовательная
+// обработка всех 10 точек реально вылезала за 60 сек (см. находку
+// 2026-09-14 в proj-dashboard-status.md - Vercel Observability показал
+// таймаут именно у этого cron'а) - и HTTP-запросы (см.
+// connectors/yandexMaps.ts), и upsert'ы в БД (см. syncAll ниже) теперь
+// идут небольшими параллельными пачками, а не строго по одной. У Яндекса
+// нет фильтра отзывов по дате, так что чанкинг по датам, как у Такскома,
+// здесь не применим - весь список отзывов перечитывается каждый раз.
 export const maxDuration = 60;
+
+// Сколько точек пишем в БД одновременно, и сколько отзывов одной точки -
+// одновременно. Neon отдаёт pooled-соединение (см. .env.example), так
+// что умеренный параллелизм по БД безопасен.
+const LOCATIONS_WRITE_CONCURRENCY = 3;
+const REVIEWS_WRITE_CONCURRENCY = 5;
 
 async function syncAll(projectCodes?: string[]) {
   const results = await fetchYandexMapsData({ projectCodes });
 
-  let reviewsUpserted = 0;
   const infoUpdated: string[] = [];
+  let reviewsUpserted = 0;
 
-  for (const [code, { info, reviews }] of results) {
-    const project = await prisma.project.findUnique({ where: { code } });
-    if (!project) continue; // код в YANDEX_MAPS_LOCATIONS, но проекта ещё нет в БД - пропускаем, не создаём молча (в отличие от Такскома здесь нет своего "имени по умолчанию")
+  // Точки независимы в БД (разные projectId у каждой) - пишем
+  // параллельно небольшими пачками, а не строго по одной.
+  await mapWithConcurrency(
+    [...results.entries()],
+    LOCATIONS_WRITE_CONCURRENCY,
+    async ([code, { info, reviews }]) => {
+      const project = await prisma.project.findUnique({ where: { code } });
+      if (!project) return; // код в YANDEX_MAPS_LOCATIONS, но проекта ещё нет в БД - пропускаем, не создаём молча (в отличие от Такскома здесь нет своего "имени по умолчанию")
 
-    await prisma.yandexMapsInfo.upsert({
-      where: { projectId: project.id },
-      update: {
-        orgId: info.orgId,
-        ratingValue: info.ratingValue,
-        ratingCount: info.ratingCount,
-        reviewCount: info.reviewCount,
-        address: info.address,
-        latitude: info.latitude,
-        longitude: info.longitude,
-      },
-      create: {
-        projectId: project.id,
-        orgId: info.orgId,
-        orgSlug: YANDEX_MAPS_LOCATIONS.find((l) => l.projectCode === code)?.orgSlug ?? "",
-        ratingValue: info.ratingValue,
-        ratingCount: info.ratingCount,
-        reviewCount: info.reviewCount,
-        address: info.address,
-        latitude: info.latitude,
-        longitude: info.longitude,
-      },
-    });
-    infoUpdated.push(code);
-
-    for (const review of reviews) {
-      await prisma.yandexReview.upsert({
-        where: {
-          orgId_authorUserId_publishedAt: {
-            orgId: review.orgId,
-            authorUserId: review.authorUserId,
-            publishedAt: review.publishedAt,
-          },
+      await prisma.yandexMapsInfo.upsert({
+        where: { projectId: project.id },
+        update: {
+          orgId: info.orgId,
+          ratingValue: info.ratingValue,
+          ratingCount: info.ratingCount,
+          reviewCount: info.reviewCount,
+          address: info.address,
+          latitude: info.latitude,
+          longitude: info.longitude,
         },
-        update: { authorName: review.authorName, text: review.text, rating: review.rating },
         create: {
           projectId: project.id,
-          orgId: review.orgId,
-          authorUserId: review.authorUserId,
-          authorName: review.authorName,
-          text: review.text,
-          rating: review.rating,
-          publishedAt: review.publishedAt,
+          orgId: info.orgId,
+          orgSlug: YANDEX_MAPS_LOCATIONS.find((l) => l.projectCode === code)?.orgSlug ?? "",
+          ratingValue: info.ratingValue,
+          ratingCount: info.ratingCount,
+          reviewCount: info.reviewCount,
+          address: info.address,
+          latitude: info.latitude,
+          longitude: info.longitude,
         },
       });
-      reviewsUpserted++;
-    }
-  }
+      infoUpdated.push(code);
+
+      // Отзывы одной точки тоже независимы друг от друга (разные ключи
+      // upsert'а) - раньше по одному upsert'у на каждый из уже нескольких
+      // сотен отзывов само по себе съедало заметную часть лимита в 60 сек.
+      await mapWithConcurrency(reviews, REVIEWS_WRITE_CONCURRENCY, async (review) => {
+        await prisma.yandexReview.upsert({
+          where: {
+            orgId_authorUserId_publishedAt: {
+              orgId: review.orgId,
+              authorUserId: review.authorUserId,
+              publishedAt: review.publishedAt,
+            },
+          },
+          update: { authorName: review.authorName, text: review.text, rating: review.rating },
+          create: {
+            projectId: project.id,
+            orgId: review.orgId,
+            authorUserId: review.authorUserId,
+            authorName: review.authorName,
+            text: review.text,
+            rating: review.rating,
+            publishedAt: review.publishedAt,
+          },
+        });
+        reviewsUpserted++;
+      });
+    },
+  );
 
   return { infoUpdated, reviewsUpserted };
 }

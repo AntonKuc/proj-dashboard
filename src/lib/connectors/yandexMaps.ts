@@ -32,6 +32,8 @@
  * Карты".
  */
 
+import { mapWithConcurrency } from "@/lib/concurrency";
+
 export type YandexMapsLocation = {
   /** Совпадает с Project.code в нашей БД. */
   projectCode: string;
@@ -252,16 +254,26 @@ export type YandexMapsSyncResult = {
   reviews: YandexReviewRecord[];
 };
 
+// Сколько точек обрабатываем одновременно. Умеренное число - достаточно,
+// чтобы уложиться в лимит Vercel в 60 сек (см. maxDuration в
+// api/v1/sync/yandex-maps/route.ts), но не настолько много, чтобы залпом
+// из 10 одновременных запросов спровоцировать антибот Яндекса.
+const LOCATIONS_CONCURRENCY = 3;
+
 /**
  * Полный синк для одной или нескольких наших точек: текущий снимок
  * рейтинга/адреса/координат + полный архив отзывов (Антон хочет все,
  * не только последние - решено 2026-09-10).
  *
  * Без диапазона дат (в отличие от Такскома) - у Яндекса нет фильтра
- * отзывов по дате, так что каждый синк перечитывает всё заново. Это
- * не страшно: это горстка обычных HTTP-запросов на точку, а не
- * по запросу на смену, так что весь список точек спокойно
- * укладывается в один вызов serverless-функции.
+ * отзывов по дате, так что каждый синк перечитывает всё заново.
+ *
+ * Точки обрабатываются небольшими параллельными пачками (см.
+ * LOCATIONS_CONCURRENCY), а не строго по одной: при строго
+ * последовательной обработке всех 10 точек ночной cron стал вылезать
+ * за лимит в 60 сек (см. находку 2026-09-14 в proj-dashboard-status.md
+ * в claude.ai проекте "Работа") - каждая точка независима (свой orgId,
+ * свои страницы), так что параллелизм здесь безопасен.
  */
 export async function fetchYandexMapsData(opts: {
   projectCodes?: string[];
@@ -270,12 +282,12 @@ export async function fetchYandexMapsData(opts: {
     ? YANDEX_MAPS_LOCATIONS.filter((l) => opts.projectCodes!.includes(l.projectCode))
     : YANDEX_MAPS_LOCATIONS;
 
-  const out = new Map<string, YandexMapsSyncResult>();
-  for (const loc of locations) {
+  const entries = await mapWithConcurrency(locations, LOCATIONS_CONCURRENCY, async (loc) => {
     const orgHtml = await fetchHtml(orgUrl(loc));
     const info = parseYandexOrgInfo(orgHtml, loc.orgId);
     const reviews = await fetchAllReviews(loc);
-    out.set(loc.projectCode, { info, reviews });
-  }
-  return out;
+    return [loc.projectCode, { info, reviews }] as [string, YandexMapsSyncResult];
+  });
+
+  return new Map(entries);
 }

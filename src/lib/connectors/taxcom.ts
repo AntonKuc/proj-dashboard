@@ -239,3 +239,49 @@ export async function fetchTaxcomRevenue(opts: {
   }
   return out;
 }
+
+/**
+ * ВРЕМЕННО (добавлено 2026-09-14, удалить сразу после использования) -
+ * тянет реальный DocumentList и DocumentInfo по одной смене, чтобы
+ * проверить сырой ответ Такскома на наличие позиций чека (предметы
+ * расчёта) и признака канала продажи - см. proj-dashboard-status.md,
+ * раздел про блоки "каналы продаж" и "проданные позиции". Возвращает
+ * НЕПАРСЕННЫЙ JSON целиком, ничего не сохраняет в БД.
+ */
+export async function debugFetchOneDocumentRaw(loc: TaxcomLocation, from: Date, to: Date): Promise<unknown> {
+  const { integratorId } = requireTaxcomEnv();
+
+  const shifts = await withSession(loc.agreementNumber, (token) =>
+    taxcomFetch<{ records?: ShiftListRecord[] }>(
+      `/API/v2/ShiftList?fn=${loc.fn}&begin=${fmtTaxcomDate(from)}&end=${fmtTaxcomDate(to)}`,
+      { method: "GET", integratorId, sessionToken: token },
+    ),
+  );
+  const shift = shifts.records?.[shifts.records.length - 1];
+  if (!shift) return { note: "no shifts in range", shiftListRaw: shifts };
+
+  const docs = await withSession(loc.agreementNumber, (token) =>
+    taxcomFetch<unknown>(`/API/v2/DocumentList?fn=${loc.fn}&shift=${shift.shiftNumber}&ps=10`, {
+      method: "GET",
+      integratorId,
+      sessionToken: token,
+    }),
+  );
+
+  const docsObj = docs as { records?: unknown[]; documents?: unknown[] };
+  const docRecords: any[] = docsObj?.records ?? docsObj?.documents ?? [];
+  const firstDoc = docRecords.find((d) => d?.type === 3) ?? docRecords[0];
+  if (!firstDoc) return { shift, documentListRaw: docs };
+
+  const fd = firstDoc.fd ?? firstDoc.number ?? firstDoc.documentNumber ?? firstDoc.fiscalDocumentNumber;
+
+  const info = await withSession(loc.agreementNumber, (token) =>
+    taxcomFetch<unknown>(`/API/v2/DocumentInfo?fn=${loc.fn}&fd=${fd}`, {
+      method: "GET",
+      integratorId,
+      sessionToken: token,
+    }),
+  );
+
+  return { shift, documentListRaw: docs, sampleFd: fd, documentInfoRaw: info };
+}
